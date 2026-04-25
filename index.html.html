@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>臺北市犯罪統計儀表板</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: #f5f5f7; color: #1d1d1f; min-height: 100vh; }
+  .page { max-width: 1100px; margin: 0 auto; padding: 2rem 1.5rem; }
+  h1 { font-size: 22px; font-weight: 600; color: #1d1d1f; }
+  .subtitle { font-size: 13px; color: #6e6e73; margin-top: 4px; margin-bottom: 1.5rem; }
+  .controls { display: flex; gap: 8px; margin-bottom: 1.5rem; align-items: center; }
+  .controls label { font-size: 13px; color: #6e6e73; }
+  select { font-size: 13px; padding: 5px 10px; border-radius: 8px; border: 1px solid #d2d2d7; background: #fff; color: #1d1d1f; cursor: pointer; outline: none; }
+  select:focus { border-color: #0071e3; }
+  .metrics { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 1.5rem; }
+  .metric { background: #fff; border-radius: 12px; padding: 1.1rem 1.2rem; box-shadow: 0 1px 4px rgba(0,0,0,0.07); }
+  .metric .label { font-size: 12px; color: #6e6e73; margin-bottom: 6px; }
+  .metric .value { font-size: 24px; font-weight: 600; color: #1d1d1f; }
+  .metric .sub { font-size: 11px; color: #aeaeb2; margin-top: 4px; }
+  .metric .delta { font-size: 12px; margin-top: 4px; font-weight: 500; }
+  .delta.down { color: #28cd41; }
+  .delta.up { color: #ff3b30; }
+  .charts-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .chart-card { background: #fff; border-radius: 14px; padding: 1.1rem 1.3rem; box-shadow: 0 1px 4px rgba(0,0,0,0.07); }
+  .chart-card.full { grid-column: 1 / -1; }
+  .chart-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.9rem; }
+  .chart-title { font-size: 13px; font-weight: 600; color: #6e6e73; }
+  .legend { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 10px; font-size: 11px; color: #6e6e73; }
+  .legend-item { display: flex; align-items: center; gap: 4px; }
+  .legend-dot { width: 10px; height: 10px; border-radius: 2px; flex-shrink: 0; }
+  .btn-group { display: flex; gap: 4px; flex-wrap: wrap; }
+  .btn-switch { font-size: 11px; padding: 4px 11px; border-radius: 20px; border: 1px solid #d2d2d7; background: #f5f5f7; color: #6e6e73; cursor: pointer; transition: all 0.15s; font-weight: 500; }
+  .btn-switch:hover { background: #e8e8ed; }
+  .btn-switch.active { background: #0071e3; color: #fff; border-color: #0071e3; }
+  footer { text-align: center; font-size: 12px; color: #aeaeb2; margin-top: 2rem; padding-top: 1rem; border-top: 1px solid #e5e5ea; }
+  @media (max-width: 640px) {
+    .charts-grid { grid-template-columns: 1fr; }
+    .chart-card.full { grid-column: 1; }
+    .metrics { grid-template-columns: 1fr; }
+    .chart-header { flex-direction: column; align-items: flex-start; gap: 8px; }
+  }
+</style>
+</head>
+<body>
+<div class="page">
+  <h1>臺北市犯罪統計儀表板</h1>
+  <div class="subtitle">資料來源：臺北市政府警察局｜涵蓋竊盜、暴力犯罪、違序及經濟案件月別資料（民國 87–115 年）</div>
+
+  <div class="controls">
+    <label>顯示年份範圍：</label>
+    <select id="yearFilter" onchange="updateAll()">
+      <option value="all">全部（87–115年）</option>
+      <option value="recent10">近10年（105–115年）</option>
+      <option value="recent5" selected>近5年（110–115年）</option>
+      <option value="recent3">近3年（112–115年）</option>
+    </select>
+  </div>
+
+  <div class="metrics" id="metrics"></div>
+
+  <div class="charts-grid">
+    <div class="chart-card full">
+      <div class="chart-title" style="margin-bottom:.9rem;">竊盜案件發生件數趨勢（月）</div>
+      <div class="legend">
+        <span class="legend-item"><span class="legend-dot" style="background:#378ADD"></span>竊盜總計</span>
+        <span class="legend-item"><span class="legend-dot" style="background:#1D9E75"></span>12個月移動平均</span>
+      </div>
+      <div style="position:relative;width:100%;height:220px;"><canvas id="theftChart"></canvas></div>
+    </div>
+
+    <div class="chart-card">
+      <div class="chart-title" style="margin-bottom:.9rem;">暴力犯罪案件發生件數趨勢</div>
+      <div class="legend">
+        <span class="legend-item"><span class="legend-dot" style="background:#D85A30"></span>強制性交</span>
+        <span class="legend-item"><span class="legend-dot" style="background:#BA7517"></span>強盜搶奪</span>
+        <span class="legend-item"><span class="legend-dot" style="background:#A32D2D"></span>其他</span>
+      </div>
+      <div style="position:relative;width:100%;height:220px;"><canvas id="violenceChart"></canvas></div>
+    </div>
+
+    <div class="chart-card">
+      <div class="chart-title" style="margin-bottom:.9rem;">違序 &amp; 經濟案件趨勢</div>
+      <div class="legend">
+        <span class="legend-item"><span class="legend-dot" style="background:#7F77DD"></span>違序件數</span>
+        <span class="legend-item"><span class="legend-dot" style="background:#D4537E"></span>經濟案件</span>
+      </div>
+      <div style="position:relative;width:100%;height:220px;"><canvas id="otherChart"></canvas></div>
+    </div>
+
+    <div class="chart-card full">
+      <div class="chart-header">
+        <div class="chart-title" id="yearlyTitle">竊盜年度總計比較</div>
+        <div class="btn-group">
+          <button class="btn-switch active" onclick="switchYearly('theft',this)">竊盜</button>
+          <button class="btn-switch" onclick="switchYearly('violence',this)">暴力犯罪</button>
+          <button class="btn-switch" onclick="switchYearly('disorder',this)">違序</button>
+          <button class="btn-switch" onclick="switchYearly('economic',this)">經濟案件</button>
+        </div>
+      </div>
+      <div style="position:relative;width:100%;height:200px;margin-top:.8rem;"><canvas id="yearlyBar"></canvas></div>
+    </div>
+  </div>
+
+  <footer>臺北市犯罪統計儀表板 · 資料僅供參考</footer>
+</div>
+
+<script>
+const theftRaw = [["87年 1月",2748],["87年 2月",2661],["87年 3月",3399],["87年 4月",3227],["87年 5月",3138],["87年 6月",3119],["87年 7月",3278],["87年 8月",3391],["87年 9月",3118],["87年 10月",2937],["87年 11月",3285],["87年 12月",3692],["88年 1月",3052],["88年 2月",2075],["88年 3月",3214],["88年 4月",2814],["88年 5月",2294],["88年 6月",2205],["88年 7月",2775],["88年 8月",2761],["88年 9月",2636],["88年 10月",2842],["88年 11月",2506],["88年 12月",2298],["89年 1月",2276],["89年 2月",1807],["89年 3月",2732],["89年 4月",2480],["89年 5月",2883],["89年 6月",2507],["89年 7月",2897],["89年 8月",2855],["89年 9月",2742],["89年 10月",2850],["89年 11月",2928],["89年 12月",3166],["90年 1月",2652],["90年 2月",2505],["90年 3月",2941],["90年 4月",2678],["90年 5月",2415],["90年 6月",2302],["90年 7月",2665],["90年 8月",2842],["90年 9月",2453],["90年 10月",2826],["90年 11月",2667],["90年 12月",2702],["91年 1月",2490],["91年 2月",2076],["91年 3月",2465],["91年 4月",2584],["91年 5月",2572],["91年 6月",2430],["91年 7月",2571],["91年 8月",2596],["91年 9月",2468],["91年 10月",2747],["91年 11月",2682],["91年 12月",2643],["92年 1月",2634],["92年 2月",2072],["92年 3月",2619],["92年 4月",2688],["92年 5月",2470],["92年 6月",2602],["92年 7月",2823],["92年 8月",2786],["92年 9月",2717],["92年 10月",3020],["92年 11月",2516],["92年 12月",2548],["93年 1月",2071],["93年 2月",2142],["93年 3月",2305],["93年 4月",2483],["93年 5月",2666],["93年 6月",2532],["93年 7月",2577],["93年 8月",2614],["93年 9月",2533],["93年 10月",2618],["93年 11月",2529],["93年 12月",2411],["94年 1月",2225],["94年 2月",1755],["94年 3月",2236],["94年 4月",2183],["94年 5月",2189],["94年 6月",2238],["94年 7月",2147],["94年 8月",2441],["94年 9月",2139],["94年 10月",2355],["94年 11月",2330],["94年 12月",2255],["95年 1月",2049],["95年 2月",1951],["95年 3月",1905],["95年 4月",1854],["95年 5月",1937],["95年 6月",1803],["95年 7月",1970],["95年 8月",1952],["95年 9月",1939],["95年 10月",2065],["95年 11月",1856],["95年 12月",1864],["96年 1月",1757],["96年 2月",1464],["96年 3月",1598],["96年 4月",1576],["96年 5月",1663],["96年 6月",1551],["96年 7月",1784],["96年 8月",1811],["96年 9月",1791],["96年 10月",1783],["96年 11月",1656],["96年 12月",1778],["97年 1月",1770],["97年 2月",1314],["97年 3月",1739],["97年 4月",1699],["97年 5月",1657],["97年 6月",1593],["97年 7月",1610],["97年 8月",1649],["97年 9月",1440],["97年 10月",1622],["97年 11月",1561],["97年 12月",1441],["98年 1月",1245],["98年 2月",1253],["98年 3月",1293],["98年 4月",1220],["98年 5月",1269],["98年 6月",1254],["98年 7月",1375],["98年 8月",1246],["98年 9月",1304],["98年 10月",1319],["98年 11月",1383],["98年 12月",1422],["99年 1月",1353],["99年 2月",1162],["99年 3月",1251],["99年 4月",1323],["99年 5月",1198],["99年 6月",1120],["99年 7月",1257],["99年 8月",1209],["99年 9月",1154],["99年 10月",1098],["99年 11月",1050],["99年 12月",1083],["100年 1月",1113],["100年 2月",881],["100年 3月",876],["100年 4月",930],["100年 5月",929],["100年 6月",984],["100年 7月",959],["100年 8月",880],["100年 9月",786],["100年 10月",888],["100年 11月",821],["100年 12月",805],["101年 1月",956],["101年 2月",869],["101年 3月",835],["101年 4月",807],["101年 5月",876],["101年 6月",814],["101年 7月",772],["101年 8月",775],["101年 9月",720],["101年 10月",807],["101年 11月",708],["101年 12月",723],["102年 1月",662],["102年 2月",876],["102年 3月",656],["102年 4月",609],["102年 5月",657],["102年 6月",619],["102年 7月",686],["102年 8月",679],["102年 9月",689],["102年 10月",673],["102年 11月",616],["102年 12月",630],["103年 1月",840],["103年 2月",622],["103年 3月",577],["103年 4月",647],["103年 5月",752],["103年 6月",630],["103年 7月",570],["103年 8月",598],["103年 9月",530],["103年 10月",513],["103年 11月",464],["103年 12月",500],["104年 1月",503],["104年 2月",826],["104年 3月",536],["104年 4月",461],["104年 5月",503],["104年 6月",473],["104年 7月",489],["104年 8月",509],["104年 9月",449],["104年 10月",452],["104年 11月",455],["104年 12月",594],["105年 1月",521],["105年 2月",437],["105年 3月",521],["105年 4月",555],["105年 5月",538],["105年 6月",482],["105年 7月",478],["105年 8月",553],["105年 9月",429],["105年 10月",522],["105年 11月",495],["105年 12月",549],["106年 1月",492],["106年 2月",478],["106年 3月",510],["106年 4月",506],["106年 5月",501],["106年 6月",477],["106年 7月",468],["106年 8月",483],["106年 9月",517],["106年 10月",510],["106年 11月",579],["106年 12月",541],["107年 1月",499],["107年 2月",322],["107年 3月",486],["107年 4月",471],["107年 5月",556],["107年 6月",475],["107年 7月",554],["107年 8月",526],["107年 9月",462],["107年 10月",540],["107年 11月",479],["107年 12月",602],["108年 1月",533],["108年 2月",340],["108年 3月",427],["108年 4月",423],["108年 5月",469],["108年 6月",455],["108年 7月",512],["108年 8月",453],["108年 9月",423],["108年 10月",556],["108年 11月",525],["108年 12月",529],["109年 1月",424],["109年 2月",482],["109年 3月",512],["109年 4月",463],["109年 5月",416],["109年 6月",403],["109年 7月",405],["109年 8月",430],["109年 9月",401],["109年 10月",392],["109年 11月",482],["109年 12月",485],["110年 1月",498],["110年 2月",354],["110年 3月",427],["110年 4月",422],["110年 5月",453],["110年 6月",253],["110年 7月",331],["110年 8月",399],["110年 9月",391],["110年 10月",368],["110年 11月",339],["110年 12月",398],["111年 1月",287],["111年 2月",316],["111年 3月",433],["111年 4月",419],["111年 5月",394],["111年 6月",392],["111年 7月",450],["111年 8月",454],["111年 9月",391],["111年 10月",405],["111年 11月",390],["111年 12月",436],["112年 1月",315],["112年 2月",338],["112年 3月",350],["112年 4月",295],["112年 5月",377],["112年 6月",381],["112年 7月",448],["112年 8月",441],["112年 9月",378],["112年 10月",398],["112年 11月",429],["112年 12月",467],["113年 1月",328],["113年 2月",294],["113年 3月",415],["113年 4月",339],["113年 5月",259],["113年 6月",333],["113年 7月",380],["113年 8月",390],["113年 9月",585],["113年 10月",700],["113年 11月",633],["113年 12月",594],["114年 1月",513],["114年 2月",523],["114年 3月",553],["114年 4月",576],["114年 5月",607],["114年 6月",578],["114年 7月",585],["114年 8月",567],["114年 9月",516],["114年 10月",565],["114年 11月",527],["114年 12月",572],["115年 1月",532]];
+
+const violenceRaw = [["106年 1月",20,11,5,2],["106年 2月",13,4,3,6],["106年 3月",16,5,3,8],["106年 4月",14,5,4,5],["106年 5月",16,5,4,6],["106年 6月",14,3,6,5],["106年 7月",15,4,9,2],["106年 8月",14,5,5,4],["106年 9月",10,1,3,6],["106年 10月",20,3,10,7],["106年 11月",6,1,2,3],["106年 12月",6,1,1,4],["107年 1月",16,1,5,10],["107年 2月",6,2,3,1],["107年 3月",12,4,4,4],["107年 4月",10,5,1,4],["107年 5月",15,0,4,11],["107年 6月",9,0,3,6],["107年 7月",13,5,2,6],["107年 8月",7,3,0,4],["107年 9月",10,0,1,9],["107年 10月",13,2,1,10],["107年 11月",14,0,7,7],["107年 12月",5,1,2,2],["108年 1月",10,1,5,4],["108年 2月",5,0,1,4],["108年 3月",13,0,6,7],["108年 4月",8,1,1,6],["108年 5月",8,2,1,5],["108年 6月",6,1,1,4],["108年 7月",6,1,1,4],["108年 8月",9,2,4,2],["108年 9月",9,3,1,5],["108年 10月",3,2,0,1],["108年 11月",11,1,7,3],["108年 12月",9,2,4,2],["109年 1月",6,3,1,2],["109年 2月",10,0,6,4],["109年 3月",4,0,2,2],["109年 4月",11,1,5,5],["109年 5月",9,1,3,5],["109年 6月",5,0,1,4],["109年 7月",4,1,1,2],["109年 8月",4,1,2,1],["109年 9月",4,0,2,2],["109年 10月",5,1,1,3],["109年 11月",5,1,3,1],["109年 12月",3,1,1,1],["110年 1月",5,0,2,3],["110年 2月",3,0,2,1],["110年 3月",4,0,2,2],["110年 4月",4,0,1,3],["110年 5月",6,1,4,1],["110年 6月",3,1,2,0],["110年 7月",5,1,2,2],["110年 8月",6,1,2,3],["110年 9月",6,0,4,2],["110年 10月",4,0,2,2],["110年 11月",3,0,1,2],["110年 12月",6,0,0,6],["111年 1月",1,0,1,0],["111年 2月",2,0,2,0],["111年 3月",6,1,3,2],["111年 4月",3,0,1,2],["111年 5月",2,0,1,1],["111年 6月",6,0,3,3],["111年 7月",5,1,2,2],["111年 8月",5,0,3,2],["111年 9月",6,1,3,2],["111年 10月",3,0,0,3],["111年 11月",5,1,2,2],["111年 12月",1,0,0,1],["112年 1月",2,0,1,1],["112年 2月",3,0,3,0],["112年 3月",3,0,1,2],["112年 4月",4,1,1,2],["112年 5月",6,2,3,1],["112年 6月",6,1,4,1],["112年 7月",1,0,0,1],["112年 8月",3,0,1,2],["112年 9月",4,0,3,1],["112年 10月",2,0,0,2],["112年 11月",4,0,2,2],["112年 12月",4,1,1,2],["113年 1月",2,0,2,0],["113年 2月",4,0,3,1],["113年 3月",1,0,1,0],["113年 4月",3,2,1,0],["113年 5月",5,0,0,5],["113年 6月",3,0,2,1],["113年 7月",3,1,1,1],["113年 8月",2,0,1,1],["113年 9月",6,0,4,2],["113年 10月",7,1,5,1],["113年 11月",3,2,0,1],["113年 12月",3,1,1,1],["114年 1月",3,0,3,0],["114年 2月",6,0,4,2],["114年 3月",7,0,2,5],["114年 4月",1,0,0,1],["114年 5月",4,1,1,2],["114年 6月",7,1,5,1],["114年 7月",12,2,4,6],["114年 8月",4,0,3,1],["114年 9月",5,0,3,2],["114年 10月",5,1,2,2],["114年 11月",2,0,1,1],["114年 12月",8,0,4,4],["115年 1月",3,1,1,1]];
+
+const otherRaw = [
+["87年 1月",107,135],["87年 2月",124,120],["87年 3月",164,113],["87年 4月",189,93],["87年 5月",192,165],["87年 6月",194,110],["87年 7月",202,115],["87年 8月",158,124],["87年 9月",163,87],["87年 10月",230,91],["87年 11月",226,71],["87年 12月",274,59],
+["88年 1月",244,118],["88年 2月",101,121],["88年 3月",219,100],["88年 4月",164,113],["88年 5月",198,101],["88年 6月",185,117],["88年 7月",229,178],["88年 8月",137,109],["88年 9月",157,120],["88年 10月",115,102],["88年 11月",183,76],["88年 12月",157,93],
+["89年 1月",184,120],["89年 2月",121,104],["89年 3月",181,65],["89年 4月",138,85],["89年 5月",163,112],["89年 6月",149,156],["89年 7月",132,121],["89年 8月",113,152],["89年 9月",149,163],["89年 10月",189,435],["89年 11月",204,254],["89年 12月",201,436],
+["90年 1月",141,468],["90年 2月",185,163],["90年 3月",175,393],["90年 4月",133,433],["90年 5月",137,525],["90年 6月",150,626],["90年 7月",231,621],["90年 8月",286,439],["90年 9月",178,445],["90年 10月",368,391],["90年 11月",285,359],["90年 12月",227,428],
+["91年 1月",208,289],["91年 2月",145,172],["91年 3月",217,200],["91年 4月",186,392],["91年 5月",179,296],["91年 6月",152,92],["91年 7月",176,172],["91年 8月",165,145],["91年 9月",132,103],["91年 10月",140,76],["91年 11月",161,356],["91年 12月",112,148],
+["92年 1月",130,281],["92年 2月",139,147],["92年 3月",139,226],["92年 4月",142,199],["92年 5月",34,205],["92年 6月",105,155],["92年 7月",141,188],["92年 8月",134,160],["92年 9月",139,145],["92年 10月",153,185],["92年 11月",125,178],["92年 12月",121,156],
+["93年 1月",85,58],["93年 2月",136,81],["93年 3月",117,52],["93年 4月",114,71],["93年 5月",79,54],["93年 6月",84,44],["93年 7月",115,49],["93年 8月",142,68],["93年 9月",78,41],["93年 10月",105,72],["93年 11月",113,54],["93年 12月",115,45],
+["94年 1月",84,37],["94年 2月",71,48],["94年 3月",115,43],["94年 4月",124,45],["94年 5月",89,80],["94年 6月",94,89],["94年 7月",146,77],["94年 8月",105,68],["94年 9月",108,49],["94年 10月",100,53],["94年 11月",86,85],["94年 12月",95,80],
+["95年 1月",92,83],["95年 2月",127,62],["95年 3月",118,53],["95年 4月",85,51],["95年 5月",116,90],["95年 6月",67,41],["95年 7月",133,79],["95年 8月",117,72],["95年 9月",75,49],["95年 10月",75,38],["95年 11月",90,85],["95年 12月",114,80],
+["96年 1月",114,63],["96年 2月",54,53],["96年 3月",150,70],["96年 4月",109,85],["96年 5月",120,53],["96年 6月",90,104],["96年 7月",109,74],["96年 8月",96,80],["96年 9月",55,68],["96年 10月",80,58],["96年 11月",106,57],["96年 12月",105,66],
+["97年 1月",155,71],["97年 2月",93,44],["97年 3月",144,47],["97年 4月",142,52],["97年 5月",131,46],["97年 6月",92,57],["97年 7月",148,41],["97年 8月",154,45],["97年 9月",120,41],["97年 10月",124,44],["97年 11月",69,36],["97年 12月",195,48],
+["98年 1月",101,41],["98年 2月",149,53],["98年 3月",132,51],["98年 4月",117,59],["98年 5月",91,40],["98年 6月",125,70],["98年 7月",96,59],["98年 8月",145,80],["98年 9月",59,54],["98年 10月",140,75],["98年 11月",100,41],["98年 12月",70,54],
+["99年 1月",114,39],["99年 2月",94,41],["99年 3月",116,70],["99年 4月",121,62],["99年 5月",97,66],["99年 6月",80,105],["99年 7月",65,56],["99年 8月",74,49],["99年 9月",76,41],["99年 10月",77,59],["99年 11月",62,37],["99年 12月",54,46],
+["100年 1月",67,49],["100年 2月",55,36],["100年 3月",51,64],["100年 4月",41,73],["100年 5月",41,50],["100年 6月",42,49],["100年 7月",68,57],["100年 8月",58,62],["100年 9月",70,100],["100年 10月",36,44],["100年 11月",35,38],["100年 12月",50,100],
+["101年 1月",62,61],["101年 2月",59,59],["101年 3月",54,87],["101年 4月",50,61],["101年 5月",54,59],["101年 6月",47,83],["101年 7月",38,68],["101年 8月",47,57],["101年 9月",41,156],["101年 10月",40,52],["101年 11月",32,64],["101年 12月",36,90],
+["102年 1月",38,82],["102年 2月",94,72],["102年 3月",55,116],["102年 4月",47,72],["102年 5月",45,73],["102年 6月",40,157],["102年 7月",35,58],["102年 8月",48,107],["102年 9月",39,39],["102年 10月",46,90],["102年 11月",37,114],["102年 12月",37,55],
+["103年 1月",72,57],["103年 2月",42,47],["103年 3月",36,54],["103年 4月",32,85],["103年 5月",44,56],["103年 6月",54,97],["103年 7月",51,58],["103年 8月",61,50],["103年 9月",56,83],["103年 10月",53,120],["103年 11月",53,122],["103年 12月",44,48],
+["104年 1月",94,86],["104年 2月",67,40],["104年 3月",80,93],["104年 4月",66,120],["104年 5月",71,82],["104年 6月",77,189],["104年 7月",61,86],["104年 8月",81,120],["104年 9月",76,136],["104年 10月",63,205],["104年 11月",43,228],["104年 12月",55,76],
+["105年 1月",35,82],["105年 2月",78,48],["105年 3月",85,170],["105年 4月",54,159],["105年 5月",64,138],["105年 6月",39,152],["105年 7月",50,78],["105年 8月",85,111],["105年 9月",55,101],["105年 10月",69,112],["105年 11月",75,213],["105年 12月",45,31],
+["106年 1月",83,101],["106年 2月",77,81],["106年 3月",75,141],["106年 4月",58,93],["106年 5月",75,129],["106年 6月",70,147],["106年 7月",67,80],["106年 8月",62,162],["106年 9月",63,126],["106年 10月",61,113],["106年 11月",64,257],["106年 12月",66,118],
+["107年 1月",68,105],["107年 2月",77,92],["107年 3月",88,101],["107年 4月",59,126],["107年 5月",56,191],["107年 6月",50,208],["107年 7月",65,176],["107年 8月",57,91],["107年 9月",53,120],["107年 10月",70,112],["107年 11月",57,136],["107年 12月",76,22],
+["108年 1月",98,96],["108年 2月",80,70],["108年 3月",92,117],["108年 4月",105,93],["108年 5月",116,90],["108年 6月",82,159],["108年 7月",103,53],["108年 8月",112,75],["108年 9月",97,74],["108年 10月",122,96],["108年 11月",162,43],["108年 12月",116,75],
+["109年 1月",72,42],["109年 2月",100,112],["109年 3月",164,50],["109年 4月",97,60],["109年 5月",99,109],["109年 6月",91,46],["109年 7月",123,87],["109年 8月",92,89],["109年 9月",127,89],["109年 10月",103,54],["109年 11月",102,61],["109年 12月",107,50],
+["110年 1月",95,64],["110年 2月",118,45],["110年 3月",122,52],["110年 4月",91,48],["110年 5月",107,62],["110年 6月",49,125],["110年 7月",83,41],["110年 8月",82,47],["110年 9月",87,48],["110年 10月",75,43],["110年 11月",91,71],["110年 12月",128,60],
+["111年 1月",144,65],["111年 2月",101,43],["111年 3月",122,61],["111年 4月",95,61],["111年 5月",80,46],["111年 6月",77,49],["111年 7月",77,27],["111年 8月",74,24],["111年 9月",67,33],["111年 10月",53,31],["111年 11月",84,23],["111年 12月",100,23],
+["112年 1月",61,38],["112年 2月",73,31],["112年 3月",79,45],["112年 4月",73,43],["112年 5月",58,30],["112年 6月",85,32],["112年 7月",77,30],["112年 8月",78,38],["112年 9月",72,23],["112年 10月",74,41],["112年 11月",70,37],["112年 12月",63,41],
+["113年 1月",86,27],["113年 2月",61,32],["113年 3月",71,26],["113年 4月",70,37],["113年 5月",55,45],["113年 6月",62,56],["113年 7月",89,106],["113年 8月",70,103],["113年 9月",59,81],["113年 10月",50,104],["113年 11月",130,68],["113年 12月",104,118],
+["114年 1月",90,79],["114年 2月",130,101],["114年 3月",144,93],["114年 4月",80,77],["114年 5月",102,75],["114年 6月",134,123],["114年 7月",87,105],["114年 8月",109,139],["114年 9月",93,84],["114年 10月",106,119],["114年 11月",103,136],["114年 12月",83,125],
+["115年 1月",87,93],["115年 2月",128,81]
+];
+
+function parseYear(label) { const m = label.match(/^(\d+)年/); return m ? parseInt(m[1]) : 0; }
+function getYearRange() {
+  const v = document.getElementById('yearFilter').value;
+  if (v==='all') return [87,115];
+  if (v==='recent10') return [105,115];
+  if (v==='recent5') return [110,115];
+  if (v==='recent3') return [112,115];
+  return [87,115];
+}
+function filterByYear(data, minY, maxY) {
+  return data.filter(d => { const y=parseYear(d[0]); return y>=minY && y<=maxY; });
+}
+function movingAvg(data, w) {
+  return data.map((_,i) => {
+    if (i<w-1) return null;
+    return Math.round(data.slice(i-w+1,i+1).reduce((s,v)=>s+v,0)/w);
+  });
+}
+function buildYearlyMap(data, extractor) {
+  const map={};
+  data.forEach(d=>{ const y=d[0].match(/^(\d+)年/)[1]; map[y]=(map[y]||0)+extractor(d); });
+  return map;
+}
+
+let charts={};
+let currentMode='theft';
+const yearlyConfig={
+  theft:    {label:'竊盜年度總計比較',    color:'#378ADD', extractor:d=>d[1], src:()=>theftRaw},
+  violence: {label:'暴力犯罪年度總計比較', color:'#D85A30', extractor:d=>d[1], src:()=>violenceRaw},
+  disorder: {label:'違序案件年度總計比較', color:'#7F77DD', extractor:d=>d[1], src:()=>otherRaw},
+  economic: {label:'經濟案件年度總計比較', color:'#D4537E', extractor:d=>d[2], src:()=>otherRaw},
+};
+
+function switchYearly(mode, btn) {
+  currentMode=mode;
+  document.querySelectorAll('.btn-switch').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  updateYearlyChart();
+}
+
+function updateYearlyChart() {
+  const [minY,maxY]=getYearRange();
+  const cfg=yearlyConfig[currentMode];
+  const filtered=filterByYear(cfg.src(),minY,maxY);
+  const map=buildYearlyMap(filtered,cfg.extractor);
+  const keys=Object.keys(map).sort((a,b)=>+a-+b);
+  const vals=keys.map(k=>map[k]);
+  const maxVal=Math.max(...vals);
+  document.getElementById('yearlyTitle').textContent=cfg.label;
+  if(charts.yearly) charts.yearly.destroy();
+  charts.yearly=new Chart(document.getElementById('yearlyBar'),{
+    type:'bar',
+    data:{
+      labels:keys.map(k=>k+'年'),
+      datasets:[{label:cfg.label,data:vals,backgroundColor:vals.map(v=>v===maxVal?'#D85A30':cfg.color)}]
+    },
+    options:{
+      responsive:true,maintainAspectRatio:false,
+      plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>' '+ctx.parsed.y.toLocaleString()+' 件'}}},
+      scales:{x:{ticks:{autoSkip:false,maxRotation:45,font:{size:10}},grid:{display:false}},y:{ticks:{font:{size:10}}}}
+    }
+  });
+}
+
+function updateAll() {
+  const [minY,maxY]=getYearRange();
+  const theftF=filterByYear(theftRaw,minY,maxY);
+  const violenceF=filterByYear(violenceRaw,minY,maxY);
+  const otherF=filterByYear(otherRaw,minY,maxY);
+  const theftVals=theftF.map(d=>d[1]);
+  const theftMA=movingAvg(theftVals,12);
+  const latestTheft=theftVals[theftVals.length-1];
+  const prevTheft=theftVals[theftVals.length-13]||theftVals[0];
+  const avgTheft=Math.round(theftVals.reduce((s,v)=>s+v,0)/theftVals.length);
+  const latestViolence=violenceF.length?violenceF[violenceF.length-1][1]:0;
+  const violenceTot=violenceF.reduce((s,d)=>s+d[1],0);
+  const latestOtherVio=otherF.length?otherF[otherF.length-1][1]:0;
+  const latestEcon=otherF.length?otherF[otherF.length-1][2]:0;
+
+  document.getElementById('metrics').innerHTML=`
+    <div class="metric"><div class="label">最新月竊盜件數</div><div class="value">${latestTheft.toLocaleString()}</div><div class="sub">月平均 ${avgTheft.toLocaleString()} 件</div><div class="delta ${latestTheft<prevTheft?'down':'up'}">${latestTheft<prevTheft?'▼':'▲'} 去年同期 ${Math.abs(latestTheft-prevTheft)} 件</div></div>
+    <div class="metric"><div class="label">最新月暴力犯罪</div><div class="value">${latestViolence}</div><div class="sub">區間合計 ${violenceTot.toLocaleString()} 件</div></div>
+    <div class="metric"><div class="label">最新月違序 / 經濟</div><div class="value">${latestOtherVio} / ${latestEcon}</div><div class="sub">違序件數 / 經濟案件</div></div>
+  `;
+
+  ['theft','violence','other'].forEach(k=>{ if(charts[k]) charts[k].destroy(); });
+
+  charts.theft=new Chart(document.getElementById('theftChart'),{
+    type:'line',
+    data:{labels:theftF.map(d=>d[0].replace('年 ','/')),datasets:[
+      {label:'竊盜總計',data:theftVals,borderColor:'#378ADD',backgroundColor:'rgba(55,138,221,0.08)',borderWidth:1.5,pointRadius:0,tension:0.3,fill:true},
+      {label:'12月移動平均',data:theftMA,borderColor:'#1D9E75',borderWidth:2,pointRadius:0,tension:0.3,borderDash:[4,3]}
+    ]},
+    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{mode:'index',intersect:false}},scales:{x:{ticks:{maxTicksLimit:12,maxRotation:45,font:{size:10}},grid:{display:false}},y:{ticks:{font:{size:10}},beginAtZero:false}}}
+  });
+
+  charts.violence=new Chart(document.getElementById('violenceChart'),{
+    type:'bar',
+    data:{labels:violenceF.map(d=>d[0].replace('年 ','/')),datasets:[
+      {label:'強制性交',data:violenceF.map(d=>d[2]),backgroundColor:'#D85A30',stack:'v'},
+      {label:'強盜搶奪',data:violenceF.map(d=>d[3]),backgroundColor:'#BA7517',stack:'v'},
+      {label:'其他',data:violenceF.map(d=>d[4]),backgroundColor:'#A32D2D',stack:'v'}
+    ]},
+    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{mode:'index',intersect:false}},scales:{x:{stacked:true,ticks:{maxTicksLimit:10,maxRotation:45,font:{size:10}},grid:{display:false}},y:{stacked:true,ticks:{font:{size:10}},beginAtZero:true}}}
+  });
+
+  charts.other=new Chart(document.getElementById('otherChart'),{
+    type:'line',
+    data:{labels:otherF.map(d=>d[0].replace('年 ','/')),datasets:[
+      {label:'違序件數',data:otherF.map(d=>d[1]),borderColor:'#7F77DD',backgroundColor:'rgba(127,119,221,0.07)',borderWidth:1.5,pointRadius:0,tension:0.3,fill:true},
+      {label:'經濟案件',data:otherF.map(d=>d[2]),borderColor:'#D4537E',borderWidth:1.5,pointRadius:0,tension:0.3}
+    ]},
+    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{mode:'index',intersect:false}},scales:{x:{ticks:{maxTicksLimit:10,maxRotation:45,font:{size:10}},grid:{display:false}},y:{ticks:{font:{size:10}},beginAtZero:true}}}
+  });
+
+  updateYearlyChart();
+}
+
+updateAll();
+</script>
+</body>
+</html>
